@@ -11,3 +11,7 @@ target_path="${TARGET_PATH:-"output-$timestamp-$2"}"
 pennsieve manifest create /mnt/efs/output/$2 -t $target_path
 pennsieve manifest list 1
 pennsieve upload manifest 1
+
+pennsieve manifest create /mnt/efs/workspace/$2 -t $target_path
+pennsieve manifest list 2
+pennsieve upload manifest 2
