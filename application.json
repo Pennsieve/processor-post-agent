@@ -1,0 +1,23 @@
+{
+  "name": "processor-post-agent",
+  "description": "processor-post-agent",
+  "version": "1.0.0",
+  "inputs": [
+    {
+      "name": "Packages",
+      "description": "Pipeline packages",
+      "path": "/input",
+      "files": [
+        {
+          "id": "package_file",
+          "description": "A package file",
+          "ext": "*",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "outputs": [],
+  "params": [],
+  "depends_on": ["*"]
+}
