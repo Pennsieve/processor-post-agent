@@ -72,7 +72,8 @@ func main() {
 	fmt.Println("INTEGRATION_ID: ", integrationID)
 
 	// validate
-	entries, err := os.ReadDir(os.Getenv("OUTPUT_DIR"))
+	inputDir := os.Getenv("INPUT_DIR")
+	entries, err := os.ReadDir(inputDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("/bin/sh", "./agent.sh", datasetID, integrationID)
+	cmd := exec.Command("/bin/sh", "./agent.sh", datasetID, integrationID, inputDir)
 	out, err := cmd.Output()
 	if err != nil {
 		log.Fatalf("error %s", err)
