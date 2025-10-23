@@ -28,5 +28,6 @@ RUN apk --no-cache add curl
 
 RUN mkdir /mnt/efs
 RUN mkdir -p /service/logs
+RUN mkdir -p data
 
 ENTRYPOINT [ "/service/bootstrap" ]

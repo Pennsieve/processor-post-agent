@@ -72,7 +72,18 @@ func main() {
 	fmt.Println("INTEGRATION_ID: ", integrationID)
 
 	// validate
-	entries, err := os.ReadDir(os.Getenv("OUTPUT_DIR"))
+	inputDir := os.Getenv("INPUT_DIR")
+	outputDir := os.Getenv("OUTPUT_DIR")
+
+	var processorInputDir string
+	processorInputDir = outputDir
+	if integration.WorkflowUuid != "" {
+		fmt.Println("workflowUuid detected, using INPUT_DIR for processor input")
+		processorInputDir = inputDir
+	}
+
+	entries, err := os.ReadDir(processorInputDir)
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,7 +93,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("/bin/sh", "./agent.sh", datasetID, integrationID)
+	cmd := exec.Command("/bin/sh", "./agent.sh", datasetID, integrationID, processorInputDir)
 	out, err := cmd.Output()
 	if err != nil {
 		log.Fatalf("error %s", err)
@@ -97,10 +108,11 @@ type Integration struct {
 	DatasetNodeID string      `json:"datasetId"`
 	PackageIDs    []string    `json:"packageIds"`
 	Params        interface{} `json:"params"`
+	WorkflowUuid  string      `json:"workflowUuid"`
 }
 
 func getIntegration(apiHost string, integrationId string, sessionToken string) ([]byte, error) {
-	url := fmt.Sprintf("%s/integrations/%s", apiHost, integrationId)
+	url := fmt.Sprintf("%s/workflows/instances/%s", apiHost, integrationId)
 
 	req, _ := http.NewRequest("GET", url, nil)
 
