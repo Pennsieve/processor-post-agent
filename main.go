@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,7 +22,6 @@ func main() {
 	// get integration
 	sessionToken := os.Getenv("SESSION_TOKEN")
 	apiHost2 := os.Getenv("PENNSIEVE_API_HOST2")
-	// TODO: should get new sessiontoken in the event main application runs for long
 	integrationResponse, err := getIntegration(apiHost2, integrationID, sessionToken)
 	if err != nil {
 		log.Fatalln(err)
@@ -93,6 +94,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Ensure API credentials are available
+	createdAPIKey, apiHost, err := ensureAPICredentials(environment, sessionToken, integrationID)
+	if err != nil {
+		fmt.Println("failed to ensure API credentials", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
 	cmd := exec.Command("/bin/sh", "./agent.sh", datasetID, integrationID, processorInputDir)
 	out, err := cmd.Output()
 	if err != nil {
@@ -100,6 +108,13 @@ func main() {
 	}
 	output := string(out)
 	fmt.Println(output)
+
+	// Clean up created API key if one was created
+	if createdAPIKey != "" {
+		if err := deleteAPIKey(apiHost, sessionToken, createdAPIKey); err != nil {
+			fmt.Println("failed to delete API key", slog.String("error", err.Error()))
+		}
+	}
 }
 
 type Integration struct {
@@ -128,4 +143,109 @@ func getIntegration(apiHost string, integrationId string, sessionToken string) (
 	body, _ := io.ReadAll(res.Body)
 
 	return body, nil
+}
+
+type APIKeyResponse struct {
+	Name   string `json:"name"`
+	Key    string `json:"key"`
+	Secret string `json:"secret"`
+}
+
+func createAPIKey(apiHost string, sessionToken string, name string) (*APIKeyResponse, error) {
+	url := fmt.Sprintf("%s/token?api_key", apiHost)
+
+	requestBody := map[string]string{"name": name}
+	jsonBody, _ := json.Marshal(requestBody)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", sessionToken))
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API key: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("failed to create API key with status: %d", res.StatusCode)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var apiKeyResponse APIKeyResponse
+	if err := json.Unmarshal(body, &apiKeyResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode API key response: %w", err)
+	}
+
+	return &apiKeyResponse, nil
+}
+
+func ensureAPICredentials(environment string, sessionToken string, integrationID string) (string, string, error) {
+	apiKey := os.Getenv("PENNSIEVE_API_KEY")
+	apiSecret := os.Getenv("PENNSIEVE_API_SECRET")
+
+	// Determine API host for token endpoint
+	var apiHost string
+	if environment == "local" || environment == "dev" {
+		apiHost = "https://api.pennsieve.net"
+	} else {
+		apiHost = "https://api.pennsieve.io"
+	}
+
+	if apiKey != "" && apiSecret != "" {
+		fmt.Println("PENNSIEVE_API_KEY and PENNSIEVE_API_SECRET already set")
+		return "", apiHost, nil
+	}
+
+	fmt.Println("PENNSIEVE_API_KEY or PENNSIEVE_API_SECRET not set, creating API key")
+
+	// Create API key
+	apiKeyResponse, err := createAPIKey(apiHost, sessionToken, fmt.Sprintf("workflow-%s", integrationID))
+	if err != nil {
+		return "", apiHost, fmt.Errorf("failed to create API key: %w", err)
+	}
+	fmt.Println("created API key for workflow", slog.String("integrationID", integrationID))
+
+	// Set environment variables from response
+	if err := os.Setenv("PENNSIEVE_API_KEY", apiKeyResponse.Key); err != nil {
+		return "", apiHost, fmt.Errorf("failed to set PENNSIEVE_API_KEY: %w", err)
+	}
+	if err := os.Setenv("PENNSIEVE_API_SECRET", apiKeyResponse.Secret); err != nil {
+		return "", apiHost, fmt.Errorf("failed to set PENNSIEVE_API_SECRET: %w", err)
+	}
+
+	fmt.Println("PENNSIEVE_API_KEY and PENNSIEVE_API_SECRET set from API key response")
+	return apiKeyResponse.Key, apiHost, nil
+}
+
+func deleteAPIKey(apiHost string, sessionToken string, apiKey string) error {
+	url := fmt.Sprintf("%s/token/%s?api_key", apiHost, apiKey)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", sessionToken))
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete API key: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to delete API key with status: %d", res.StatusCode)
+	}
+
+	fmt.Println("successfully deleted API key", slog.String("apiKey", apiKey))
+	return nil
 }
