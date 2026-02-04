@@ -127,7 +127,7 @@ type Integration struct {
 }
 
 func getIntegration(apiHost string, integrationId string, sessionToken string) ([]byte, error) {
-	url := fmt.Sprintf("%s/workflows/instances/%s", apiHost, integrationId)
+	url := fmt.Sprintf("%s/compute/workflows/instances/%s", apiHost, integrationId)
 
 	req, _ := http.NewRequest("GET", url, nil)
 
